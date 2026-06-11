@@ -51,6 +51,9 @@ def _verify_signature(body: bytes, signature: str) -> bool:
     return base64.b64encode(digest).decode() == signature
 
 
+CIRCLED = {"①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5}
+
+
 def _parse_index(s: str) -> int | None:
     try:
         idx = int(s.strip())
@@ -64,6 +67,12 @@ def _parse_index(s: str) -> int | None:
 def _handle_command(text: str, user_id: str) -> str:
     text = text.strip()
     first = text[0] if text else ""
+
+    if first in CIRCLED:
+        idx = CIRCLED[first]
+        update_goal_status(user_id, idx, "done")
+        g = FIXED_GOALS[idx - 1]
+        return f"{g['symbol']}{g['text']}　達成！\n\n{format_status(get_today_status(user_id))}"
 
     if first == "○":
         parts = text[1:].strip().split(None, 1)
