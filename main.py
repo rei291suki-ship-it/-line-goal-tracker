@@ -3,6 +3,7 @@ import hmac
 import base64
 import json
 import os
+import unicodedata
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
@@ -51,7 +52,13 @@ def _verify_signature(body: bytes, signature: str) -> bool:
     return base64.b64encode(digest).decode() == signature
 
 
-CIRCLED = {"①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5}
+# ①=U+2460 ～ ⑤=U+2464 をコードポイントで生成（ソースファイルの文字化け対策）
+CIRCLED = {chr(0x2460 + i): i + 1 for i in range(5)}
+
+
+def _clean(text: str) -> str:
+    # 不可視文字・制御文字・異体字セレクタを除去
+    return "".join(c for c in text if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
 def _parse_index(s: str) -> int | None:
@@ -65,7 +72,7 @@ def _parse_index(s: str) -> int | None:
 
 
 def _handle_command(text: str, user_id: str) -> str:
-    text = text.strip()
+    text = _clean(text.strip())
     first = text[0] if text else ""
 
     if first in CIRCLED:
