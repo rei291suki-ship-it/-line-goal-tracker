@@ -75,11 +75,18 @@ def _handle_command(text: str, user_id: str) -> str:
     text = _clean(text.strip())
     first = text[0] if text else ""
 
-    if first in CIRCLED:
-        idx = CIRCLED[first]
-        update_goal_status(user_id, idx, "done")
-        g = FIXED_GOALS[idx - 1]
-        return f"{g['symbol']}{g['text']}　達成！\n\n{format_status(get_today_status(user_id))}"
+    # 先頭の丸数字を全部収集（例: ①②できた → [1, 2]）
+    indices = []
+    for ch in text:
+        if ch in CIRCLED:
+            indices.append(CIRCLED[ch])
+        else:
+            break
+    if indices:
+        for idx in indices:
+            update_goal_status(user_id, idx, "done")
+        lines = [f"{FIXED_GOALS[idx-1]['symbol']}{FIXED_GOALS[idx-1]['text']}　達成！" for idx in indices]
+        return "\n".join(lines) + f"\n\n{format_status(get_today_status(user_id))}"
 
     if first == "○":
         parts = text[1:].strip().split(None, 1)
