@@ -4,34 +4,35 @@ import base64
 import json
 import os
 from contextlib import asynccontextmanager
-from datetime import date
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-from database import init_db, register_user, add_goal, complete_goal, get_today_goals
+from database import init_db, register_user, update_goal_status, get_today_status
 from line_api import reply_message
-from formatting import format_goals, calc_rate
+from formatting import format_status
+from goals_config import FIXED_GOALS
 from scheduler import start_scheduler
 
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 
 HELP_TEXT = """📌 コマンド一覧
 
-追加 [目標] — 今日の目標を追加
-完了 [番号] — 目標を完了にする
-一覧 — 今日の目標と達成率を表示
-ヘルプ — このメッセージを表示
+○ [番号] — 達成
+△ [番号] [メモ] — 部分達成
+✕ [番号] — 未達成
+一覧 — 今日の状況を確認
+ヘルプ — このメッセージ
 
 例:
-追加 運動30分
-完了 1
-一覧"""
+○ 1
+△ 5 20分
+✕ 3"""
 
 WELCOME_TEXT = (
     "🌟 目標管理ボットへようこそ！\n\n"
-    "「追加 [目標]」で今日の目標を登録してください。\n"
-    "「ヘルプ」でコマンド一覧を確認できます。"
+    "○ △ ✕ で毎日の達成状況を記録できます。\n"
+    "「ヘルプ」でコマンド一覧を確認してください。"
 )
 
 
@@ -50,39 +51,54 @@ def _verify_signature(body: bytes, signature: str) -> bool:
     return base64.b64encode(digest).decode() == signature
 
 
+def _parse_index(s: str) -> int | None:
+    try:
+        idx = int(s.strip())
+        if 1 <= idx <= len(FIXED_GOALS):
+            return idx
+    except ValueError:
+        pass
+    return None
+
+
 def _handle_command(text: str, user_id: str) -> str:
     text = text.strip()
+    first = text[0] if text else ""
 
-    if text.startswith("追加 ") or text.startswith("目標 "):
-        goal_text = text.split(" ", 1)[1].strip()
-        if not goal_text:
-            return "目標を入力してください。\n例: 追加 運動30分"
-        add_goal(user_id, goal_text)
-        goals = get_today_goals(user_id)
-        return f"✅ 追加しました！\n\n今日の目標（{date.today().strftime('%m/%d')}）:\n{format_goals(goals)}"
+    if first == "○":
+        parts = text[1:].strip().split(None, 1)
+        idx = _parse_index(parts[0]) if parts else None
+        if not idx:
+            return "番号を入力してください。\n例: ○ 1"
+        update_goal_status(user_id, idx, "done")
+        g = FIXED_GOALS[idx - 1]
+        return f"○ {g['symbol']}{g['text']} 達成！\n\n{format_status(get_today_status(user_id))}"
 
-    if text.startswith("完了 "):
-        try:
-            num = int(text.split(" ", 1)[1].strip())
-        except ValueError:
-            return "番号を入力してください。\n例: 完了 1"
-        if complete_goal(user_id, num):
-            goals = get_today_goals(user_id)
-            rate = calc_rate(goals)
-            return f"🎉 #{num} 完了！達成率: {rate}%\n\n{format_goals(goals)}"
-        return f"目標 #{num} が見つかりません。「一覧」で番号を確認してください。"
+    if first == "△":
+        parts = text[1:].strip().split(None, 1)
+        idx = _parse_index(parts[0]) if parts else None
+        if not idx:
+            return "番号とメモを入力してください。\n例: △ 5 20分"
+        note = parts[1].strip() if len(parts) > 1 else None
+        update_goal_status(user_id, idx, "partial", note)
+        g = FIXED_GOALS[idx - 1]
+        return f"△ {g['symbol']}{g['text']} 部分達成！\n\n{format_status(get_today_status(user_id))}"
 
-    if text in ("一覧", "リスト", "状況", "list", "status"):
-        goals = get_today_goals(user_id)
-        if not goals:
-            return "今日の目標はまだ登録されていません。\n「追加 [目標]」で追加してください。"
-        rate = calc_rate(goals)
-        return f"📋 今日の目標（{date.today().strftime('%m/%d')}）達成率: {rate}%\n\n{format_goals(goals)}"
+    if first in ("✕", "×", "✗"):
+        idx = _parse_index(text[1:].strip())
+        if not idx:
+            return "番号を入力してください。\n例: ✕ 1"
+        update_goal_status(user_id, idx, "failed")
+        g = FIXED_GOALS[idx - 1]
+        return f"✕ {g['symbol']}{g['text']} を記録しました\n\n{format_status(get_today_status(user_id))}"
+
+    if text in ("一覧", "状況", "list"):
+        return format_status(get_today_status(user_id))
 
     if text in ("ヘルプ", "help", "？", "?"):
         return HELP_TEXT
 
-    return "コマンドが認識できませんでした。\n「ヘルプ」でコマンド一覧を確認してください。"
+    return "「ヘルプ」でコマンド一覧を確認してください。"
 
 
 @app.post("/webhook")
