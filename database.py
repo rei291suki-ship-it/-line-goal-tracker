@@ -3,11 +3,13 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 
-DB_PATH = os.getenv("DB_PATH", "data/goals.db")
+DB_PATH = os.getenv("DB_PATH", "goals.db")
 
 
 def _connect():
-    Path(DB_PATH).parent.mkdir(exist_ok=True)
+    p = Path(DB_PATH)
+    if p.parent != Path("."):
+        p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
