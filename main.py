@@ -118,6 +118,19 @@ def _handle_command(text: str, user_id: str) -> str:
     if text in ("一覧", "状況", "list"):
         return format_status(get_today_status(user_id))
 
+    if text in ("テスト朝", "test朝"):
+        from formatting import morning_message
+        return morning_message()
+
+    if text in ("テスト夜", "test夜"):
+        from formatting import evening_message
+        return evening_message(get_today_status(user_id))
+
+    if text in ("テスト週", "test週"):
+        from formatting import weekly_message
+        from database import get_week_status
+        return weekly_message(get_week_status(user_id))
+
     if text in ("ヘルプ", "help", "？", "?"):
         return HELP_TEXT
 
